@@ -1,0 +1,6 @@
+p, role_viewer, report-demo, report, read
+g, alice, role_viewer, report-demo
+p, role_team_admin, team:platform, dashboard, read
+p, role_team_approver, team:platform, dashboard, approve
+g, admin, role_team_admin, team:platform
+g, admin, role_team_approver, team:platform
