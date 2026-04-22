@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # Repository DB (Oracle RPT in production; SQLite allowed for local scaffold)
     repo_database_url: str = "sqlite+aiosqlite:///./reportbank_repo.db"
     repo_schema: str | None = None  # e.g. "RPT" for Oracle
+    pii_metadata_view: str = "RPT.VW_PII_META"
 
     # ITSM outbound callback (stub if unset)
     itsm_callback_url: str | None = None

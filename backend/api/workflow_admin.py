@@ -5,7 +5,8 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import DbaApprovePayload, DbaRejectPayload, WorkflowJobDto
+from api.schemas import DbaApprovePayload, DbaExecutePayload, DbaRejectPayload, WorkflowJobDto
+from api.auth_context import CurrentUser, get_current_user
 from core.database import AsyncSessionFactory, get_repo_session
 from services.workflow import WorkflowService
 
@@ -21,6 +22,8 @@ def _to_dto(job) -> WorkflowJobDto:
         status=job.status.value,
         sql_text=job.sql_text,
         target_db_kind=job.target_db_kind,
+        final_sql_text=job.final_sql_text,
+        executed_db_conn_id=job.executed_db_conn_id,
         pii_summary=job.pii_summary,
         performance_notes=job.performance_notes,
     )
@@ -65,6 +68,31 @@ async def reject_job(
     job = await wf.reject(session, job_id, body.dba_user, body.reason)
     if job is None:
         raise HTTPException(status_code=400, detail="reject_not_allowed")
+    return _to_dto(job)
+
+
+@router.post("/jobs/{job_id}/execute", response_model=WorkflowJobDto)
+async def execute_job(
+    job_id: str,
+    body: DbaExecutePayload,
+    session: AsyncSession = Depends(get_repo_session),
+    user: CurrentUser = Depends(get_current_user),
+) -> WorkflowJobDto:
+    if user.role.upper() != "DBA":
+        raise HTTPException(status_code=403, detail="dba_role_required")
+    wf = WorkflowService()
+    try:
+        job = await wf.execute_for_dba(
+            session,
+            job_id=job_id,
+            db_conn_id=body.db_conn_id,
+            edited_sql=body.edited_sql,
+            dba_user=body.dba_user,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"execution_failed:{exc}") from exc
+    if job is None:
+        raise HTTPException(status_code=400, detail="execute_not_allowed")
     return _to_dto(job)
 
 

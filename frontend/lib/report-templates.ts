@@ -24,6 +24,7 @@ export type ReportTemplate = {
 export const CURRENT_USER = {
   userId: "admin",
   department: "PLATFORM" as DepartmentCode,
+  role: "DBA",
 };
 
 export const REPORT_TEMPLATES: ReportTemplate[] = [

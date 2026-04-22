@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -15,13 +16,16 @@ def _utcnow() -> datetime:
 
 
 def _to_entity(row: WorkflowJobRow) -> WorkflowJob:
+    pii_summary = _to_dict(row.pii_summary)
     return WorkflowJob(
         id=row.id,
         psr_number=row.psr_number,
         status=WorkflowStatus(row.status),
         sql_text=row.sql_text,
         target_db_kind=row.target_db_kind,
-        pii_summary=dict(row.pii_summary or {}),
+        final_sql_text=row.final_sql_text,
+        executed_db_conn_id=row.executed_db_conn_id,
+        pii_summary=pii_summary,
         performance_notes=row.performance_notes,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -45,10 +49,35 @@ class WorkflowRepository:
             status=status.value,
             sql_text=sql_text,
             target_db_kind=target_db_kind,
-            pii_summary={},
+            final_sql_text=None,
+            executed_db_conn_id=None,
+            pii_summary="{}",
             performance_notes=None,
         )
         session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _to_entity(row)
+
+    async def update_execution(
+        self,
+        session: AsyncSession,
+        *,
+        job_id: str,
+        final_sql_text: str,
+        executed_db_conn_id: str,
+        target_db_kind: str,
+        status: WorkflowStatus,
+    ) -> WorkflowJob | None:
+        res = await session.execute(select(WorkflowJobRow).where(WorkflowJobRow.id == job_id))
+        row = res.scalar_one_or_none()
+        if row is None:
+            return None
+        row.final_sql_text = final_sql_text
+        row.executed_db_conn_id = executed_db_conn_id
+        row.target_db_kind = target_db_kind
+        row.status = status.value
+        row.updated_at = _utcnow()
         await session.commit()
         await session.refresh(row)
         return _to_entity(row)
@@ -80,9 +109,23 @@ class WorkflowRepository:
         row.status = status.value
         row.updated_at = _utcnow()
         if pii_summary is not None:
-            row.pii_summary = pii_summary
+            row.pii_summary = json.dumps(pii_summary, ensure_ascii=False)
         if performance_notes is not None:
             row.performance_notes = performance_notes
         await session.commit()
         await session.refresh(row)
         return _to_entity(row)
+
+
+def _to_dict(value: str | dict | None) -> dict:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}

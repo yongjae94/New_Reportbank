@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Database,
   FileText,
   Home,
+  PlayCircle,
   ShieldCheck,
   ShieldCog,
   Table2,
@@ -13,10 +15,11 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CURRENT_USER } from "@/lib/report-templates";
 
 type Item = { href: string; label: string; icon: LucideIcon };
 
-const sections: Array<{ title: string; items: Item[] }> = [
+const baseSections: Array<{ title: string; items: Item[] }> = [
   {
     title: "공통",
     items: [
@@ -43,6 +46,19 @@ export function Sidebar({
   onToggle: () => void;
 }) {
   const pathname = usePathname();
+  const sections =
+    CURRENT_USER.role === "DBA"
+      ? [
+          ...baseSections,
+          {
+            title: "DBA 전용",
+            items: [
+              { href: "/dba/approvals", label: "DBA 승인함", icon: PlayCircle },
+              { href: "/dba/db-connections", label: "DB Connection 관리", icon: Database },
+            ],
+          },
+        ]
+      : baseSections;
   return (
     <aside
       className={cn(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +14,8 @@ class DashboardRepository:
         rows = res.scalars().all()
         out: list[DashboardQuery] = []
         for row in rows:
-            row_team = str((row.pii_summary or {}).get("team_id", "platform"))
+            summary = _to_dict(row.pii_summary)
+            row_team = str(summary.get("team_id", "platform"))
             if row_team != team_id:
                 continue
             out.append(
@@ -24,7 +26,7 @@ class DashboardRepository:
                     sql_text=row.sql_text,
                     created_at=row.created_at.isoformat(),
                     target_db_kind=row.target_db_kind,
-                    pii_summary=dict(row.pii_summary or {}),
+                    pii_summary=summary,
                     pii_items=[],
                 )
             )
@@ -52,3 +54,17 @@ class DashboardRepository:
                 pii_items=[],
             ),
         ]
+
+
+def _to_dict(value: str | dict | None) -> dict:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}

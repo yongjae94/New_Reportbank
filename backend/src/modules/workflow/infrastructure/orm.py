@@ -3,8 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import DateTime, JSON, String, Text
-from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from core.config import get_settings
@@ -26,7 +25,7 @@ def _utcnow() -> datetime:
 
 
 class WorkflowJobRow(Base):
-    __tablename__ = "WORKFLOW_JOBS"
+    __tablename__ = "TB_RPT_WORKFLOW_JOBS"
     __table_args__ = _schema_args()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -34,7 +33,10 @@ class WorkflowJobRow(Base):
     status: Mapped[str] = mapped_column(String(32), index=True)
     sql_text: Mapped[str] = mapped_column(Text())
     target_db_kind: Mapped[str] = mapped_column(String(32))
-    pii_summary: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict)
+    final_sql_text: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    executed_db_conn_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Keep JSON payload as text for Oracle async dialect stability.
+    pii_summary: Mapped[str] = mapped_column(Text(), default="{}")
     performance_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(

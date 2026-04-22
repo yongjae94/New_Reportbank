@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import dashboard, itsm_webhook, workflow_admin
+from api import dashboard, db_connections, itsm_webhook, runtime_query, workflow_admin
 from core.config import get_settings
 from core.database import engine
 from core.target_db_manager import target_db_manager
@@ -37,6 +37,8 @@ def create_app() -> FastAPI:
     app.include_router(itsm_webhook.router, prefix="/api")
     app.include_router(workflow_admin.router, prefix="/api")
     app.include_router(dashboard.router, prefix="/api")
+    app.include_router(runtime_query.router, prefix="/api")
+    app.include_router(db_connections.router, prefix="/api")
 
     @app.get("/health")
     async def health() -> dict[str, str]:

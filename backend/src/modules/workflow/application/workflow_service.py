@@ -4,8 +4,11 @@ import logging
 import uuid
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.target_db_manager import TargetDbConfig, TargetDbKind, target_db_manager
+from src.modules.db_connection.infrastructure.repository import DbConnectionRepository
 from src.modules.sql_governance.application.sql_validator_service import SqlValidatorService
 from src.modules.workflow.domain.entities import WorkflowJob
 from src.modules.workflow.domain.enums import WorkflowStatus
@@ -25,6 +28,7 @@ class WorkflowService:
         self._repo = repository or WorkflowRepository()
         self._sql = sql_validator or SqlValidatorService()
         self._itsm = itsm or ItsmCallbackClient()
+        self._db_conn_repo = DbConnectionRepository()
 
     async def create_from_itsm(
         self,
@@ -99,6 +103,57 @@ class WorkflowService:
     async def get_job(self, session: AsyncSession, job_id: str) -> WorkflowJob | None:
         return await self._repo.get(session, job_id)
 
+    async def execute_for_dba(
+        self,
+        session: AsyncSession,
+        *,
+        job_id: str,
+        db_conn_id: str,
+        edited_sql: str,
+        dba_user: str,
+    ) -> WorkflowJob | None:
+        job = await self._repo.get(session, job_id)
+        if job is None or job.status != WorkflowStatus.AWAITING_DBA:
+            return None
+
+        conn_info = await self._db_conn_repo.get_connection_secret(session, db_conn_id)
+        if not conn_info:
+            raise ValueError("db_connection_not_found")
+
+        kind = _to_target_kind(str(conn_info["DB_KIND"]))
+        cfg = TargetDbConfig(
+            kind=kind,
+            host=str(conn_info["HOST"]),
+            port=int(conn_info["PORT"]),
+            database=str(conn_info["DB_NAME"]),
+            service_name=str(conn_info.get("SERVICE_NAME") or conn_info["DB_NAME"]),
+            username=str(conn_info["USERNAME"]),
+            password=str(conn_info["PASSWORD_ENC"]),
+        )
+
+        # Actual target execution (DBA editable SQL)
+        async for target_session in target_db_manager.session(cfg):
+            stmt = text(edited_sql)
+            result = await target_session.execute(stmt)
+            if edited_sql.strip().lower().startswith("select"):
+                result.fetchmany(10)
+            await target_session.commit()
+
+        notes = (job.performance_notes or "") + f";executed_by={dba_user}"
+        return await self._repo.update_execution(
+            session,
+            job_id=job_id,
+            final_sql_text=edited_sql,
+            executed_db_conn_id=db_conn_id,
+            target_db_kind=kind.value,
+            status=WorkflowStatus.AWAITING_INFOSEC,
+        ) or await self._repo.update_status(
+            session,
+            job_id,
+            WorkflowStatus.AWAITING_INFOSEC,
+            performance_notes=notes,
+        )
+
     async def mark_completed_and_callback(self, session: AsyncSession, job_id: str) -> None:
         job = await self._repo.get(session, job_id)
         if job is None:
@@ -124,3 +179,14 @@ def _dialect_for_target(kind: str) -> str | None:
     if k in {"postgres", "postgresql"}:
         return "postgres"
     return None
+
+
+def _to_target_kind(kind: str) -> TargetDbKind:
+    k = kind.lower()
+    if k in {"oracle"}:
+        return TargetDbKind.ORACLE
+    if k in {"mssql", "sqlserver"}:
+        return TargetDbKind.MSSQL
+    if k in {"postgres", "postgresql"}:
+        return TargetDbKind.POSTGRES
+    raise ValueError(f"unsupported_db_kind:{kind}")
