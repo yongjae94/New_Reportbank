@@ -18,19 +18,13 @@ export default function HomePage() {
           className="rounded-lg border border-slate-300 bg-white p-4 text-sm hover:bg-slate-50"
           href="/outputs"
         >
-          쿼리 요청/이력
+          PSR 산출
         </Link>
         <Link
           className="rounded-lg border border-slate-300 bg-white p-4 text-sm hover:bg-slate-50"
           href="/approvals"
         >
           승인 관리함
-        </Link>
-        <Link
-          className="rounded-lg border border-slate-300 bg-white p-4 text-sm hover:bg-slate-50"
-          href="/metadata"
-        >
-          메타데이터 탐색기
         </Link>
         <Link
           className="rounded-lg border border-slate-300 bg-white p-4 text-sm hover:bg-slate-50"

@@ -16,6 +16,7 @@ export type PsrRecord = {
 };
 
 const STORAGE_KEY = "reportbank.psr.records.v1";
+const SYNC_EVENT = "reportbank:psr-updated";
 
 const seed: PsrRecord[] = [
   {
@@ -95,4 +96,23 @@ export function getPsrRecords(): PsrRecord[] {
 export function savePsrRecords(rows: PsrRecord[]) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT));
+}
+
+export function subscribePsrRecords(onChange: (rows: PsrRecord[]) => void) {
+  if (!canUseStorage()) return () => {};
+
+  const sync = () => onChange(getPsrRecords());
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) sync();
+  };
+  const onCustom = () => sync();
+
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(SYNC_EVENT, onCustom);
+
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(SYNC_EVENT, onCustom);
+  };
 }

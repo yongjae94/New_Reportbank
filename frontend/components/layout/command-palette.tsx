@@ -5,9 +5,8 @@ import Link from "next/link";
 
 const quickLinks = [
   { href: "/dashboard", label: "대시보드 홈" },
-  { href: "/outputs", label: "쿼리 요청/이력" },
+  { href: "/outputs", label: "PSR 산출" },
   { href: "/approvals", label: "승인 관리함" },
-  { href: "/metadata", label: "메타데이터 탐색기" },
 ];
 
 export function CommandPalette() {

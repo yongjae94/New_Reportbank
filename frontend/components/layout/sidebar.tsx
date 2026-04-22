@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   FileText,
-  FolderSearch2,
   Home,
   ShieldCheck,
   ShieldCog,
@@ -17,13 +16,23 @@ import { cn } from "@/lib/utils";
 
 type Item = { href: string; label: string; icon: LucideIcon };
 
-const items: Item[] = [
-  { href: "/dashboard", label: "대시보드 홈", icon: Home },
-  { href: "/outputs", label: "PSR 산출", icon: FileText },
-  { href: "/approvals", label: "승인 관리함", icon: ShieldCheck },
-  { href: "/metadata", label: "메타데이터 탐색기", icon: FolderSearch2 },
-  { href: "/reports", label: "팀별 레포트", icon: Table2 },
-  { href: "/security", label: "보안 설정", icon: ShieldCog },
+const sections: Array<{ title: string; items: Item[] }> = [
+  {
+    title: "공통",
+    items: [
+      { href: "/dashboard", label: "대시보드 홈", icon: Home },
+      { href: "/outputs", label: "PSR 산출", icon: FileText },
+      { href: "/reports", label: "팀별 레포트", icon: Table2 },
+    ],
+  },
+  {
+    title: "정보보호담당자",
+    items: [{ href: "/approvals", label: "승인 관리함", icon: ShieldCheck }],
+  },
+  {
+    title: "관리자",
+    items: [{ href: "/security", label: "보안 설정", icon: ShieldCog }],
+  },
 ];
 
 export function Sidebar({
@@ -51,25 +60,32 @@ export function Sidebar({
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
       </div>
-      <nav className="space-y-1 p-2">
-        {items.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={item.label}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white",
-                active && "bg-indigo-600 text-white hover:bg-indigo-500"
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed ? <span>{item.label}</span> : null}
-            </Link>
-          );
-        })}
+      <nav className="space-y-4 p-2">
+        {sections.map((section) => (
+          <div key={section.title} className="space-y-1">
+            {!collapsed ? (
+              <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-slate-500">{section.title}</p>
+            ) : null}
+            {section.items.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={item.label}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white",
+                    active && "bg-indigo-600 text-white hover:bg-indigo-500"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!collapsed ? <span>{item.label}</span> : null}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
     </aside>
   );
