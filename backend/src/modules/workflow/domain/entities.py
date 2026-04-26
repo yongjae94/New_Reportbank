@@ -16,6 +16,7 @@ class WorkflowJob:
     target_db_kind: str
     final_sql_text: str | None = None
     executed_db_conn_id: str | None = None
+    viewable_until: datetime | None = None
     pii_summary: dict[str, Any] = field(default_factory=dict)
     performance_notes: str | None = None
     created_at: datetime | None = None

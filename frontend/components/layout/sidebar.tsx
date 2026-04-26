@@ -6,6 +6,7 @@ import {
   Database,
   FileText,
   Home,
+  FlaskConical,
   PlayCircle,
   ShieldCheck,
   ShieldCog,
@@ -56,6 +57,10 @@ export function Sidebar({
               { href: "/dba/approvals", label: "DBA 승인함", icon: PlayCircle },
               { href: "/dba/db-connections", label: "DB Connection 관리", icon: Database },
             ],
+          },
+          {
+            title: "테스트",
+            items: [{ href: "/dba/test-input", label: "테스트 입력 페이지", icon: FlaskConical }],
           },
         ]
       : baseSections;

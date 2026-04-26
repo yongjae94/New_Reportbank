@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ def _to_entity(row: WorkflowJobRow) -> WorkflowJob:
         target_db_kind=row.target_db_kind,
         final_sql_text=row.final_sql_text,
         executed_db_conn_id=row.executed_db_conn_id,
+        viewable_until=row.viewable_until,
         pii_summary=pii_summary,
         performance_notes=row.performance_notes,
         created_at=row.created_at,
@@ -42,6 +43,9 @@ class WorkflowRepository:
         sql_text: str,
         target_db_kind: str,
         status: WorkflowStatus = WorkflowStatus.REGISTERED,
+        executed_db_conn_id: str | None = None,
+        performance_notes: str | None = None,
+        viewable_until: datetime | None = None,
     ) -> WorkflowJob:
         row = WorkflowJobRow(
             id=job_id,
@@ -50,9 +54,10 @@ class WorkflowRepository:
             sql_text=sql_text,
             target_db_kind=target_db_kind,
             final_sql_text=None,
-            executed_db_conn_id=None,
+            executed_db_conn_id=executed_db_conn_id,
+            viewable_until=viewable_until,
             pii_summary="{}",
-            performance_notes=None,
+            performance_notes=performance_notes,
         )
         session.add(row)
         await session.commit()
@@ -65,9 +70,12 @@ class WorkflowRepository:
         *,
         job_id: str,
         final_sql_text: str,
-        executed_db_conn_id: str,
+        executed_db_conn_id: str | None,
         target_db_kind: str,
         status: WorkflowStatus,
+        pii_summary: dict | None = None,
+        performance_notes: str | None = None,
+        viewable_until: datetime | None = None,
     ) -> WorkflowJob | None:
         res = await session.execute(select(WorkflowJobRow).where(WorkflowJobRow.id == job_id))
         row = res.scalar_one_or_none()
@@ -77,6 +85,12 @@ class WorkflowRepository:
         row.executed_db_conn_id = executed_db_conn_id
         row.target_db_kind = target_db_kind
         row.status = status.value
+        if viewable_until is not None:
+            row.viewable_until = viewable_until
+        if pii_summary is not None:
+            row.pii_summary = json.dumps(pii_summary, ensure_ascii=False, default=_json_default)
+        if performance_notes is not None:
+            row.performance_notes = performance_notes
         row.updated_at = _utcnow()
         await session.commit()
         await session.refresh(row)
@@ -91,6 +105,17 @@ class WorkflowRepository:
         self, session: AsyncSession, status: WorkflowStatus
     ) -> list[WorkflowJob]:
         res = await session.execute(select(WorkflowJobRow).where(WorkflowJobRow.status == status.value))
+        return [_to_entity(r) for r in res.scalars().all()]
+
+    async def list_by_statuses(
+        self, session: AsyncSession, statuses: list[WorkflowStatus]
+    ) -> list[WorkflowJob]:
+        values = [s.value for s in statuses]
+        res = await session.execute(
+            select(WorkflowJobRow)
+            .where(WorkflowJobRow.status.in_(values))
+            .order_by(WorkflowJobRow.created_at.desc())
+        )
         return [_to_entity(r) for r in res.scalars().all()]
 
     async def update_status(
@@ -109,12 +134,21 @@ class WorkflowRepository:
         row.status = status.value
         row.updated_at = _utcnow()
         if pii_summary is not None:
-            row.pii_summary = json.dumps(pii_summary, ensure_ascii=False)
+            row.pii_summary = json.dumps(pii_summary, ensure_ascii=False, default=_json_default)
         if performance_notes is not None:
             row.performance_notes = performance_notes
         await session.commit()
         await session.refresh(row)
         return _to_entity(row)
+
+    async def delete(self, session: AsyncSession, job_id: str) -> bool:
+        res = await session.execute(select(WorkflowJobRow).where(WorkflowJobRow.id == job_id))
+        row = res.scalar_one_or_none()
+        if row is None:
+            return False
+        await session.delete(row)
+        await session.commit()
+        return True
 
 
 def _to_dict(value: str | dict | None) -> dict:
@@ -129,3 +163,9 @@ def _to_dict(value: str | dict | None) -> dict:
         except json.JSONDecodeError:
             return {}
     return {}
+
+
+def _json_default(value: object) -> str:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value)

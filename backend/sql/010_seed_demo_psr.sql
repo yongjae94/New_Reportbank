@@ -1,0 +1,81 @@
+-- Demo seed for PSR workflow jobs
+-- Purpose:
+--   - 5 sample PSR rows
+--   - 3 rows in DBA approval stage (awaiting_dba)
+-- Notes:
+--   - SQL uses simple executable queries (SELECT ... FROM DUAL)
+--   - Re-runnable pattern: delete by fixed demo IDs first
+
+DELETE FROM RPT.TB_RPT_WORKFLOW_JOBS
+WHERE ID IN (
+    'demo-psr-0001',
+    'demo-psr-0002',
+    'demo-psr-0003',
+    'demo-psr-0004',
+    'demo-psr-0005'
+);
+
+INSERT INTO RPT.TB_RPT_WORKFLOW_JOBS (
+    ID, PSR_NUMBER, STATUS, SQL_TEXT, TARGET_DB_KIND,
+    FINAL_SQL_TEXT, EXECUTED_DB_CONN_ID, PII_SUMMARY, PERFORMANCE_NOTES,
+    CREATED_AT, UPDATED_AT
+) VALUES (
+    'demo-psr-0001', 'PSR-DEMO-1001', 'awaiting_dba',
+    'SELECT 1 AS VALUE FROM DUAL',
+    'oracle', NULL, NULL, '{}', 'demo seed',
+    SYSTIMESTAMP - INTERVAL '15' MINUTE, SYSTIMESTAMP - INTERVAL '15' MINUTE
+);
+
+INSERT INTO RPT.TB_RPT_WORKFLOW_JOBS (
+    ID, PSR_NUMBER, STATUS, SQL_TEXT, TARGET_DB_KIND,
+    FINAL_SQL_TEXT, EXECUTED_DB_CONN_ID, PII_SUMMARY, PERFORMANCE_NOTES,
+    CREATED_AT, UPDATED_AT
+) VALUES (
+    'demo-psr-0002', 'PSR-DEMO-1002', 'awaiting_dba',
+    'SELECT 2 AS VALUE FROM DUAL',
+    'oracle', NULL, NULL, '{}', 'demo seed',
+    SYSTIMESTAMP - INTERVAL '12' MINUTE, SYSTIMESTAMP - INTERVAL '12' MINUTE
+);
+
+INSERT INTO RPT.TB_RPT_WORKFLOW_JOBS (
+    ID, PSR_NUMBER, STATUS, SQL_TEXT, TARGET_DB_KIND,
+    FINAL_SQL_TEXT, EXECUTED_DB_CONN_ID, PII_SUMMARY, PERFORMANCE_NOTES,
+    CREATED_AT, UPDATED_AT
+) VALUES (
+    'demo-psr-0003', 'PSR-DEMO-1003', 'awaiting_dba',
+    'SELECT 3 AS VALUE FROM DUAL',
+    'oracle', NULL, NULL, '{}', 'demo seed',
+    SYSTIMESTAMP - INTERVAL '10' MINUTE, SYSTIMESTAMP - INTERVAL '10' MINUTE
+);
+
+INSERT INTO RPT.TB_RPT_WORKFLOW_JOBS (
+    ID, PSR_NUMBER, STATUS, SQL_TEXT, TARGET_DB_KIND,
+    FINAL_SQL_TEXT, EXECUTED_DB_CONN_ID, PII_SUMMARY, PERFORMANCE_NOTES,
+    CREATED_AT, UPDATED_AT
+) VALUES (
+    'demo-psr-0004', 'PSR-DEMO-1004', 'awaiting_infosec',
+    'SELECT 4 AS VALUE FROM DUAL',
+    'oracle',
+    'SELECT 4 AS VALUE FROM DUAL',
+    'demo-db-conn-1',
+    '{}',
+    'executed_by=dba.user;demo seed',
+    SYSTIMESTAMP - INTERVAL '7' MINUTE, SYSTIMESTAMP - INTERVAL '6' MINUTE
+);
+
+INSERT INTO RPT.TB_RPT_WORKFLOW_JOBS (
+    ID, PSR_NUMBER, STATUS, SQL_TEXT, TARGET_DB_KIND,
+    FINAL_SQL_TEXT, EXECUTED_DB_CONN_ID, PII_SUMMARY, PERFORMANCE_NOTES,
+    CREATED_AT, UPDATED_AT
+) VALUES (
+    'demo-psr-0005', 'PSR-DEMO-1005', 'completed',
+    'SELECT 5 AS VALUE FROM DUAL',
+    'oracle',
+    'SELECT 5 AS VALUE FROM DUAL',
+    'demo-db-conn-1',
+    '{}',
+    'completed;demo seed',
+    SYSTIMESTAMP - INTERVAL '3' MINUTE, SYSTIMESTAMP - INTERVAL '2' MINUTE
+);
+
+COMMIT;

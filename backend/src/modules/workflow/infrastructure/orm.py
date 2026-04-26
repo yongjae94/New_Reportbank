@@ -35,6 +35,7 @@ class WorkflowJobRow(Base):
     target_db_kind: Mapped[str] = mapped_column(String(32))
     final_sql_text: Mapped[str | None] = mapped_column(Text(), nullable=True)
     executed_db_conn_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    viewable_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Keep JSON payload as text for Oracle async dialect stability.
     pii_summary: Mapped[str] = mapped_column(Text(), default="{}")
     performance_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -24,6 +25,7 @@ def _to_dto(job) -> WorkflowJobDto:
         target_db_kind=job.target_db_kind,
         final_sql_text=job.final_sql_text,
         executed_db_conn_id=job.executed_db_conn_id,
+        viewable_until=job.viewable_until.isoformat() if job.viewable_until else None,
         pii_summary=job.pii_summary,
         performance_notes=job.performance_notes,
     )
@@ -88,6 +90,7 @@ async def execute_job(
             db_conn_id=body.db_conn_id,
             edited_sql=body.edited_sql,
             dba_user=body.dba_user,
+            viewable_until=_parse_iso_dt(body.viewable_until),
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"execution_failed:{exc}") from exc
@@ -112,3 +115,9 @@ async def finalize_job(job_id: str, background_tasks: BackgroundTasks) -> dict[s
     """
     background_tasks.add_task(_finalize_background, job_id)
     return {"status": "accepted", "job_id": job_id}
+
+
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))

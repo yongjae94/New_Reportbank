@@ -10,6 +10,8 @@ type Job = {
   status: string;
   sql_text: string;
   target_db_kind: string;
+  executed_db_conn_id?: string | null;
+  viewable_until?: string | null;
 };
 
 type DbConn = {
@@ -35,6 +37,31 @@ export function DbaApprovalClient() {
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewableDate, setViewableDate] = useState("");
+  const [viewableHour, setViewableHour] = useState("00");
+  const startedAt = useMemo(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:00:00`;
+  }, []);
+  const maxDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+  const minDate = useMemo(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
@@ -66,6 +93,21 @@ export function DbaApprovalClient() {
   useEffect(() => {
     if (selectedJob) {
       setEditedSql(selectedJob.sql_text);
+      if (selectedJob.viewable_until) {
+        const dt = new Date(selectedJob.viewable_until);
+        const yyyy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, "0");
+        const dd = String(dt.getDate()).padStart(2, "0");
+        const hh = String(dt.getHours()).padStart(2, "0");
+        setViewableDate(`${yyyy}-${mm}-${dd}`);
+        setViewableHour(hh);
+      } else {
+        setViewableDate("");
+        setViewableHour("00");
+      }
+      if (selectedJob.executed_db_conn_id) {
+        setSelectedConnId(selectedJob.executed_db_conn_id);
+      }
     }
   }, [selectedJobId, selectedJob?.sql_text]);
 
@@ -81,14 +123,24 @@ export function DbaApprovalClient() {
           dba_user: "dba.user",
           db_conn_id: selectedConnId,
           edited_sql: editedSql,
+          viewable_until: buildViewableIso(viewableDate, viewableHour),
         }),
       });
       if (!resp.ok) {
-        throw new Error(await resp.text());
+        const txt = await resp.text();
+        if (txt.includes("viewable_until_must_be_after_start")) {
+          throw new Error("조회 종료일은 조회 시작일보다 늦어야 합니다.");
+        }
+        if (txt.includes("viewable_until_exceeds_7_days")) {
+          throw new Error("조회 가능 종료일은 현재 시점 기준 7일 이내로만 설정할 수 있습니다.");
+        }
+        throw new Error(txt);
       }
       await load();
       setSelectedJobId(null);
       setEditedSql("");
+      setViewableDate("");
+      setViewableHour("00");
     } catch (e) {
       setError(e instanceof Error ? e.message : "실행 실패");
     } finally {
@@ -103,7 +155,10 @@ export function DbaApprovalClient() {
           <h1 className="text-2xl font-semibold">DBA 승인함</h1>
           <p className="text-sm text-slate-600">실행 대기 PSR을 검토하고 쿼리를 수정 후 실행합니다.</p>
         </div>
-        <Button onClick={() => void execute()} disabled={!selectedJob || !selectedConnId || executing}>
+        <Button
+          onClick={() => void execute()}
+          disabled={!selectedJob || !selectedConnId || executing || !isValidEndDate(viewableDate, viewableHour)}
+        >
           {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : "실행"}
         </Button>
       </div>
@@ -159,8 +214,59 @@ export function DbaApprovalClient() {
               placeholder="SQL을 검토/수정하세요."
             />
           </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="min-w-[220px] flex-1">
+              <label className="mb-1 block text-xs font-medium text-slate-600">조회 시작일(고정)</label>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {startedAt}
+              </div>
+            </div>
+            <div className="min-w-[220px] flex-1">
+              <label className="mb-1 block text-xs font-medium text-slate-600">조회 종료일(최대 7일)</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  value={viewableDate}
+                  min={minDate}
+                  max={maxDate}
+                  onChange={(e) => setViewableDate(e.target.value)}
+                />
+                <select
+                  className="w-24 rounded-md border border-slate-300 px-2 py-2 text-sm"
+                  value={viewableHour}
+                  onChange={(e) => setViewableHour(e.target.value)}
+                >
+                  {Array.from({ length: 24 }, (_, idx) => {
+                    const h = String(idx).padStart(2, "0");
+                    return (
+                      <option key={h} value={h}>
+                        {h}시
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">시간 단위까지만 설정됩니다.</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
   );
+}
+
+function buildViewableIso(dateValue: string, hourValue: string): string | null {
+  if (!dateValue) return null;
+  const hour = hourValue || "00";
+  const dt = new Date(`${dateValue}T${hour}:00:00`);
+  return dt.toISOString();
+}
+
+function isValidEndDate(dateValue: string, hourValue: string): boolean {
+  const endIso = buildViewableIso(dateValue, hourValue);
+  if (!endIso) return false;
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  return new Date(endIso).getTime() > now.getTime();
 }

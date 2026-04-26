@@ -28,6 +28,7 @@ class WorkflowJobDto(BaseModel):
     target_db_kind: str
     final_sql_text: str | None = None
     executed_db_conn_id: str | None = None
+    viewable_until: str | None = None
     pii_summary: dict
     performance_notes: str | None
 
@@ -121,3 +122,50 @@ class DbaExecutePayload(BaseModel):
     dba_user: str
     db_conn_id: str
     edited_sql: str
+    viewable_until: str | None = None
+
+
+class TestInputSubmitPayload(BaseModel):
+    psr_number: str = Field(..., min_length=1)
+    db_conn_id: str = Field(..., min_length=1)
+    sql_text: str = Field(..., min_length=1)
+    viewable_until: str | None = None
+
+
+class PsrFlowDto(BaseModel):
+    job_id: str
+    psr_number: str
+    status: str
+    sql_text: str
+    final_sql_text: str | None = None
+    target_db_kind: str
+    executed_db_conn_id: str | None = None
+    snapshot_rows: list[dict] = Field(default_factory=list)
+    snapshot_columns: list[str] = Field(default_factory=list)
+    requested_at: str | None = None
+    viewable_until: str | None = None
+    access_mode: str = "잠금"
+
+
+class PsrRealtimeResponse(BaseModel):
+    row_count: int
+    rows: list[dict]
+
+
+class PsrAccessModeUpdatePayload(BaseModel):
+    access_mode: str = Field(..., pattern="^(승인|잠금)$")
+
+
+class PsrViewableUntilUpdatePayload(BaseModel):
+    viewable_until: str | None = None
+
+
+class PsrInfosecReturnPayload(BaseModel):
+    return_target: str = Field(..., pattern="^(dba|author)$")
+    reason: str | None = None
+
+
+class PsrInfosecReturnResponse(BaseModel):
+    result: str
+    job_id: str
+    next_status: str | None = None
