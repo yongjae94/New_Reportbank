@@ -14,6 +14,13 @@ class WorkflowJob:
     status: WorkflowStatus
     sql_text: str
     target_db_kind: str
+    request_title: str | None = None
+    requester_emp_no: str | None = None
+    requester_name: str | None = None
+    requester_dept: str | None = None
+    developer_emp_no: str | None = None
+    developer_name: str | None = None
+    developer_dept: str | None = None
     final_sql_text: str | None = None
     executed_db_conn_id: str | None = None
     viewable_until: datetime | None = None

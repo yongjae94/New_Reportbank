@@ -22,6 +22,13 @@ async def submit_test_input(
         job = await wf.create_test_input(
             session,
             psr_number=body.psr_number,
+            request_title=body.request_title,
+            requester_emp_no=body.requester_emp_no,
+            requester_name=body.requester_name,
+            requester_dept=body.requester_dept,
+            developer_emp_no=body.developer_emp_no,
+            developer_name=body.developer_name,
+            developer_dept=body.developer_dept,
             db_conn_id=body.db_conn_id,
             sql_text=body.sql_text,
             viewable_until=_parse_iso_dt(body.viewable_until),

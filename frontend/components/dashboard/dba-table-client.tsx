@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 
 type Job = {
   id: string;
@@ -30,7 +31,7 @@ export function DbaTableClient() {
     setLoading(true);
     setError(undefined);
     try {
-      const resp = await fetch(`${apiBase}/workflow/jobs/pending-dba`);
+      const resp = await fetch(`${apiBase}/workflow/jobs/pending-dba`, { headers: apiHeaders() });
       if (!resp.ok) throw new Error(await resp.text());
       const data = (await resp.json()) as Job[];
       setRows(data);
@@ -48,7 +49,7 @@ export function DbaTableClient() {
   const approve = async (id: string) => {
     await fetch(`${apiBase}/workflow/jobs/${id}/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ dba_user: "dba.user" }),
     });
     await load();
@@ -57,7 +58,7 @@ export function DbaTableClient() {
   const reject = async (id: string) => {
     await fetch(`${apiBase}/workflow/jobs/${id}/reject`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ dba_user: "dba.user", reason: "manual review reject" }),
     });
     await load();

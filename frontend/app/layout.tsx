@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/layout/app-shell";
+import { ClientRoot } from "@/components/layout/client-root";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="min-h-screen bg-slate-50 text-slate-900">
-        <AppShell>{children}</AppShell>
+        <ClientRoot>{children}</ClientRoot>
       </body>
     </html>
   );

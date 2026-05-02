@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 
 type SubmitState = { loading: boolean; result?: { job_id: string }; error?: string };
 
@@ -36,7 +37,7 @@ export function SqlEditorClient() {
     try {
       const resp = await fetch(`${apiBase}/itsm/webhook`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders(),
         body: JSON.stringify({
           psr_number: psrNumber,
           sql_text: sqlText,

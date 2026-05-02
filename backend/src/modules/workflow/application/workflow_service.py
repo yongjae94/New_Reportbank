@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.target_db_manager import TargetDbConfig, TargetDbKind, target_db_manager
 from src.modules.db_connection.infrastructure.repository import DbConnectionRepository
+from src.modules.security.application.masking_service import MaskingService
+from src.modules.security.infrastructure.security_repository import SecurityRepository
 from src.modules.sql_governance.application.sql_validator_service import SqlValidatorService
 from src.modules.workflow.domain.entities import WorkflowJob
 from src.modules.workflow.domain.enums import WorkflowStatus
@@ -30,12 +32,22 @@ class WorkflowService:
         self._sql = sql_validator or SqlValidatorService()
         self._itsm = itsm or ItsmCallbackClient()
         self._db_conn_repo = DbConnectionRepository()
+        self._masking = MaskingService()
+        self._security_repo = SecurityRepository()
 
     async def create_from_itsm(
         self,
         session: AsyncSession,
         *,
         psr_number: str,
+        request_title: str | None = None,
+        requester_emp_no: str | None = None,
+        requester_name: str | None = None,
+        requester_dept: str | None = None,
+        developer_emp_no: str | None = None,
+        developer_name: str | None = None,
+        developer_dept: str | None = None,
+        viewable_until: datetime | None = None,
         sql_text: str,
         target_db_kind: str,
     ) -> WorkflowJob:
@@ -44,9 +56,17 @@ class WorkflowService:
             session,
             job_id=job_id,
             psr_number=psr_number,
+            request_title=request_title,
+            requester_emp_no=requester_emp_no,
+            requester_name=requester_name,
+            requester_dept=requester_dept,
+            developer_emp_no=developer_emp_no,
+            developer_name=developer_name,
+            developer_dept=developer_dept,
             sql_text=sql_text,
             target_db_kind=target_db_kind,
             status=WorkflowStatus.REGISTERED,
+            viewable_until=viewable_until,
         )
 
     async def create_test_input(
@@ -54,6 +74,13 @@ class WorkflowService:
         session: AsyncSession,
         *,
         psr_number: str,
+        request_title: str | None = None,
+        requester_emp_no: str | None = None,
+        requester_name: str | None = None,
+        requester_dept: str | None = None,
+        developer_emp_no: str | None = None,
+        developer_name: str | None = None,
+        developer_dept: str | None = None,
         db_conn_id: str,
         sql_text: str,
         viewable_until: datetime | None = None,
@@ -71,6 +98,13 @@ class WorkflowService:
             session,
             job_id=job_id,
             psr_number=psr_number,
+            request_title=request_title,
+            requester_emp_no=requester_emp_no,
+            requester_name=requester_name,
+            requester_dept=requester_dept,
+            developer_emp_no=developer_emp_no,
+            developer_name=developer_name,
+            developer_dept=developer_dept,
             sql_text=sql_text,
             target_db_kind=kind.value,
             status=WorkflowStatus.AWAITING_DBA,
@@ -128,20 +162,61 @@ class WorkflowService:
             performance_notes=notes,
         )
 
+    async def return_to_author_from_dba(
+        self,
+        session: AsyncSession,
+        job_id: str,
+        dba_user: str,
+        reason: str | None = None,
+    ) -> bool:
+        job = await self._repo.get(session, job_id)
+        if job is None or job.status != WorkflowStatus.AWAITING_DBA:
+            return False
+        return await self._repo.delete(session, job_id)
+
     async def list_awaiting_dba(self, session: AsyncSession) -> list[WorkflowJob]:
         return await self._repo.list_by_status(session, WorkflowStatus.AWAITING_DBA)
+
+    async def list_dba_history(self, session: AsyncSession) -> list[WorkflowJob]:
+        rows = await self._repo.list_by_statuses(
+            session,
+            [WorkflowStatus.AWAITING_INFOSEC, WorkflowStatus.COMPLETED, WorkflowStatus.REJECTED],
+        )
+        return [row for row in rows if "executed_by=" in (row.performance_notes or "")]
 
     async def list_awaiting_infosec(self, session: AsyncSession) -> list[WorkflowJob]:
         return await self._repo.list_by_status(session, WorkflowStatus.AWAITING_INFOSEC)
 
     async def list_outputs(self, session: AsyncSession) -> list[WorkflowJob]:
-        return await self._repo.list_by_statuses(
+        rows = await self._repo.list_by_statuses(
             session,
             [WorkflowStatus.AWAITING_INFOSEC, WorkflowStatus.COMPLETED],
         )
+        for row in rows:
+            summary = dict(row.pii_summary or {})
+            snapshot = summary.get("snapshot_rows")
+            if isinstance(snapshot, list):
+                summary["snapshot_rows"] = self._masking.apply_masking_by_rules(
+                    snapshot,
+                    self._extract_mask_rules(summary),
+                    unmask=False,
+                )
+                row.pii_summary = summary
+        return rows
 
     async def list_completed(self, session: AsyncSession) -> list[WorkflowJob]:
-        return await self._repo.list_by_status(session, WorkflowStatus.COMPLETED)
+        rows = await self._repo.list_by_status(session, WorkflowStatus.COMPLETED)
+        for row in rows:
+            summary = dict(row.pii_summary or {})
+            snapshot = summary.get("snapshot_rows")
+            if isinstance(snapshot, list):
+                summary["snapshot_rows"] = self._masking.apply_masking_by_rules(
+                    snapshot,
+                    self._extract_mask_rules(summary),
+                    unmask=False,
+                )
+                row.pii_summary = summary
+        return rows
 
     async def get_job(self, session: AsyncSession, job_id: str) -> WorkflowJob | None:
         return await self._repo.get(session, job_id)
@@ -331,6 +406,50 @@ class WorkflowService:
             viewable_until=viewable_until,
         )
 
+    async def set_psr_mask_rules(
+        self,
+        session: AsyncSession,
+        *,
+        job_id: str,
+        items: list[dict[str, str]],
+    ) -> WorkflowJob | None:
+        job = await self._repo.get(session, job_id)
+        if job is None or job.status not in {WorkflowStatus.AWAITING_INFOSEC, WorkflowStatus.COMPLETED}:
+            return None
+        policies = await self._security_repo.list_mask_policies(session)
+        policy_map: dict[str, dict[str, Any]] = {}
+        for p in policies:
+            pid = str(_pick(p, "POLICY_ID", default="") or "").strip()
+            use_yn = str(_pick(p, "USE_YN", default="Y") or "Y").strip().upper()
+            if pid and use_yn == "Y":
+                policy_map[pid] = p
+        rules: list[dict[str, str]] = []
+        for item in items:
+            req_pid = str(item.get("policy_id", "")).strip()
+            policy = policy_map.get(req_pid)
+            if not policy:
+                continue
+            column_name = item.get("column_name", "").strip()
+            if not column_name:
+                continue
+            rules.append(
+                {
+                    "column_name": column_name,
+                    "policy_id": str(_pick(policy, "POLICY_ID", default="") or ""),
+                    "policy_name": str(_pick(policy, "POLICY_NAME", default="") or ""),
+                    "transform_key": str(_pick(policy, "TRANSFORM_KEY", default="") or ""),
+                }
+            )
+        summary = dict(job.pii_summary or {})
+        summary["mask_rules"] = rules
+        return await self._repo.update_status(
+            session,
+            job_id,
+            job.status,
+            pii_summary=summary,
+            performance_notes=job.performance_notes,
+        )
+
     async def run_realtime_query(self, session: AsyncSession, job_id: str, limit: int = 1000) -> tuple[int, list[dict]]:
         job = await self._repo.get(session, job_id)
         if job is None:
@@ -366,7 +485,12 @@ class WorkflowService:
             total = len(all_rows)
             limited = all_rows[:limit]
             rows = [{columns[idx]: value for idx, value in enumerate(row)} for row in limited]
-            return total, rows
+            masked_rows = self._masking.apply_masking_by_rules(
+                rows,
+                self._extract_mask_rules(job.pii_summary or {}),
+                unmask=False,
+            )
+            return total, masked_rows
         return 0, []
 
     async def mark_completed_and_callback(self, session: AsyncSession, job_id: str) -> None:
@@ -383,6 +507,20 @@ class WorkflowService:
             await self._itsm.notify_completion(payload)
         except Exception:
             logger.exception("ITSM callback failed for job_id=%s", job_id)
+
+    def _extract_mask_rules(self, summary: dict[str, Any]) -> list[dict[str, str]]:
+        raw = summary.get("mask_rules")
+        if not isinstance(raw, list):
+            return []
+        rules: list[dict[str, str]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            column_name = str(item.get("column_name") or "").strip()
+            transform_key = str(item.get("transform_key") or "").strip().upper()
+            if column_name and transform_key:
+                rules.append({"column_name": column_name, "transform_key": transform_key})
+        return rules
 
 
 def _dialect_for_target(kind: str) -> str | None:

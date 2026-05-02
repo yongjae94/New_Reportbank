@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     casbin_model_path: str = "casbin/rbac_model.conf"
     casbin_policy_path: str = "casbin/rbac_policy.csv"
 
+    # Session / JWT (로그인). 운영에서는 JWT_SECRET_KEY 필수 설정.
+    jwt_secret_key: str = "dev-only-set-JWT_SECRET_KEY-in-env"
+    jwt_expire_minutes: int = 300
+
 
 @lru_cache
 def get_settings() -> Settings:

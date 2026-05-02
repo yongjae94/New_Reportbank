@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import DbaApprovePayload, DbaExecutePayload, DbaRejectPayload, WorkflowJobDto
+from api.schemas import DbaApprovePayload, DbaExecutePayload, DbaRejectPayload, DbaReturnPayload, WorkflowJobDto
 from api.auth_context import CurrentUser, get_current_user
 from core.database import AsyncSessionFactory, get_repo_session
 from services.workflow import WorkflowService
@@ -17,9 +17,18 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 
 
 def _to_dto(job) -> WorkflowJobDto:
+    dba_reviewer = _extract_note_value(job.performance_notes, "executed_by")
+    infosec_reviewer = _extract_note_value(job.performance_notes, "infosec_approved_by")
     return WorkflowJobDto(
         id=job.id,
         psr_number=job.psr_number,
+        request_title=job.request_title,
+        requester_emp_no=job.requester_emp_no,
+        requester_name=job.requester_name,
+        requester_dept=job.requester_dept,
+        developer_emp_no=job.developer_emp_no,
+        developer_name=job.developer_name,
+        developer_dept=job.developer_dept,
         status=job.status.value,
         sql_text=job.sql_text,
         target_db_kind=job.target_db_kind,
@@ -28,6 +37,8 @@ def _to_dto(job) -> WorkflowJobDto:
         viewable_until=job.viewable_until.isoformat() if job.viewable_until else None,
         pii_summary=job.pii_summary,
         performance_notes=job.performance_notes,
+        dba_reviewer=dba_reviewer,
+        infosec_reviewer=infosec_reviewer,
     )
 
 
@@ -35,6 +46,13 @@ def _to_dto(job) -> WorkflowJobDto:
 async def list_pending_dba(session: AsyncSession = Depends(get_repo_session)) -> list[WorkflowJobDto]:
     wf = WorkflowService()
     jobs = await wf.list_awaiting_dba(session)
+    return [_to_dto(j) for j in jobs]
+
+
+@router.get("/jobs/dba-history", response_model=list[WorkflowJobDto])
+async def list_dba_history(session: AsyncSession = Depends(get_repo_session)) -> list[WorkflowJobDto]:
+    wf = WorkflowService()
+    jobs = await wf.list_dba_history(session)
     return [_to_dto(j) for j in jobs]
 
 
@@ -99,6 +117,22 @@ async def execute_job(
     return _to_dto(job)
 
 
+@router.post("/jobs/{job_id}/return")
+async def return_job_to_author(
+    job_id: str,
+    body: DbaReturnPayload,
+    session: AsyncSession = Depends(get_repo_session),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, str]:
+    if user.role.upper() != "DBA":
+        raise HTTPException(status_code=403, detail="dba_role_required")
+    wf = WorkflowService()
+    ok = await wf.return_to_author_from_dba(session, job_id, body.dba_user, body.reason)
+    if not ok:
+        raise HTTPException(status_code=400, detail="return_not_allowed")
+    return {"result": "deleted", "job_id": job_id}
+
+
 async def _finalize_background(job_id: str) -> None:
     try:
         async with AsyncSessionFactory() as session:
@@ -121,3 +155,15 @@ def _parse_iso_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _extract_note_value(notes: str | None, key: str) -> str | None:
+    if not notes:
+        return None
+    token = f"{key}="
+    for chunk in notes.split(";"):
+        part = chunk.strip()
+        if part.startswith(token):
+            value = part[len(token) :].strip()
+            return value or None
+    return None

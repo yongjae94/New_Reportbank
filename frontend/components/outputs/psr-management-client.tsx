@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 
 type PsrFlow = {
   job_id: string;
@@ -36,7 +37,7 @@ export function PsrManagementClient() {
 
   useEffect(() => {
     const load = async () => {
-      const resp = await fetch(`${apiBase}/v1/psr/outputs`);
+      const resp = await fetch(`${apiBase}/v1/psr/outputs`, { headers: apiHeaders() });
       if (!resp.ok) throw new Error(await resp.text());
       const data = (await resp.json()) as PsrFlow[];
       setPsrList(data);
@@ -75,7 +76,10 @@ export function PsrManagementClient() {
     if (!selected) return;
     setLoadingRealtime(true);
     try {
-      const resp = await fetch(`${apiBase}/v1/psr/${selected.job_id}/realtime?limit=1000`, { method: "POST" });
+      const resp = await fetch(`${apiBase}/v1/psr/${selected.job_id}/realtime?limit=1000`, {
+        method: "POST",
+        headers: apiHeaders(),
+      });
       if (!resp.ok) throw new Error(await resp.text());
       const data = (await resp.json()) as {
         row_count: number;

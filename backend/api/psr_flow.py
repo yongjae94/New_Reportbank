@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth_context import CurrentUser, get_current_user
 from api.schemas import (
+    PsrMaskRuleUpsertPayload,
     PsrInfosecReturnPayload,
     PsrInfosecReturnResponse,
     PsrAccessModeUpdatePayload,
@@ -22,9 +23,18 @@ router = APIRouter(prefix="/v1/psr", tags=["psr-flow"])
 
 def _to_dto(job) -> PsrFlowDto:
     summary = dict(job.pii_summary or {})
+    dba_reviewer = _extract_note_value(job.performance_notes, "executed_by")
+    infosec_reviewer = _extract_note_value(job.performance_notes, "infosec_approved_by")
     return PsrFlowDto(
         job_id=job.id,
         psr_number=job.psr_number,
+        request_title=job.request_title,
+        requester_emp_no=job.requester_emp_no,
+        requester_name=job.requester_name,
+        requester_dept=job.requester_dept,
+        developer_emp_no=job.developer_emp_no,
+        developer_name=job.developer_name,
+        developer_dept=job.developer_dept,
         status=job.status.value,
         sql_text=job.sql_text,
         final_sql_text=job.final_sql_text,
@@ -35,6 +45,9 @@ def _to_dto(job) -> PsrFlowDto:
         requested_at=job.created_at.isoformat() if job.created_at else None,
         viewable_until=job.viewable_until.isoformat() if job.viewable_until else None,
         access_mode=summary.get("access_mode", "잠금"),
+        dba_reviewer=dba_reviewer,
+        infosec_reviewer=infosec_reviewer,
+        mask_rules=summary.get("mask_rules", []),
     )
 
 
@@ -133,6 +146,24 @@ async def update_viewable_until(
     return _to_dto(row)
 
 
+@router.post("/{job_id}/mask-rules", response_model=PsrFlowDto)
+async def update_mask_rules(
+    job_id: str,
+    body: PsrMaskRuleUpsertPayload,
+    session: AsyncSession = Depends(get_repo_session),
+    user: CurrentUser = Depends(get_current_user),
+) -> PsrFlowDto:
+    wf = WorkflowService()
+    row = await wf.set_psr_mask_rules(
+        session,
+        job_id=job_id,
+        items=[{"column_name": item.column_name, "policy_id": item.policy_id} for item in body.items],
+    )
+    if row is None:
+        raise HTTPException(status_code=400, detail="mask_rules_update_not_allowed")
+    return _to_dto(row)
+
+
 @router.post("/{job_id}/realtime", response_model=PsrRealtimeResponse)
 async def run_realtime(
     job_id: str,
@@ -152,3 +183,15 @@ def _parse_iso_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _extract_note_value(notes: str | None, key: str) -> str | None:
+    if not notes:
+        return None
+    token = f"{key}="
+    for chunk in notes.split(";"):
+        part = chunk.strip()
+        if part.startswith(token):
+            value = part[len(token) :].strip()
+            return value or None
+    return None

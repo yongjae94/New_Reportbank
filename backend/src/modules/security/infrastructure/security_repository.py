@@ -90,3 +90,73 @@ class SecurityRepository:
             },
         )
         await session.commit()
+
+    async def list_mask_policies(self, session: AsyncSession) -> list[dict[str, Any]]:
+        sql = text(
+            """
+            SELECT POLICY_ID, POLICY_NAME, TRANSFORM_KEY, USE_YN
+            FROM RPT.TB_RPT_MASK_POLICY
+            ORDER BY POLICY_NAME
+            """
+        )
+        res = await session.execute(sql)
+        return [dict(r) for r in res.mappings().all()]
+
+    async def create_mask_policy(
+        self,
+        session: AsyncSession,
+        *,
+        policy_name: str,
+        transform_key: str,
+        use_yn: str,
+    ) -> dict[str, Any]:
+        sql = text(
+            """
+            INSERT INTO RPT.TB_RPT_MASK_POLICY (POLICY_ID, POLICY_NAME, TRANSFORM_KEY, USE_YN)
+            VALUES (SYS_GUID(), :policy_name, :transform_key, :use_yn)
+            """
+        )
+        await session.execute(
+            sql,
+            {"policy_name": policy_name, "transform_key": transform_key, "use_yn": use_yn},
+        )
+        await session.commit()
+        rows = await self.list_mask_policies(session)
+        for row in rows:
+            if str(row.get("POLICY_NAME")) == policy_name and str(row.get("TRANSFORM_KEY")) == transform_key:
+                return row
+        return {"POLICY_ID": "", "POLICY_NAME": policy_name, "TRANSFORM_KEY": transform_key, "USE_YN": use_yn}
+
+    async def update_mask_policy(
+        self,
+        session: AsyncSession,
+        *,
+        policy_id: str,
+        policy_name: str,
+        transform_key: str,
+        use_yn: str,
+    ) -> dict[str, Any] | None:
+        sql = text(
+            """
+            UPDATE RPT.TB_RPT_MASK_POLICY
+               SET POLICY_NAME = :policy_name,
+                   TRANSFORM_KEY = :transform_key,
+                   USE_YN = :use_yn
+             WHERE POLICY_ID = :policy_id
+            """
+        )
+        await session.execute(
+            sql,
+            {
+                "policy_id": policy_id,
+                "policy_name": policy_name,
+                "transform_key": transform_key,
+                "use_yn": use_yn,
+            },
+        )
+        await session.commit()
+        rows = await self.list_mask_policies(session)
+        for row in rows:
+            if str(row.get("POLICY_ID")) == policy_id:
+                return row
+        return None

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 
 type DbConn = {
   db_conn_id: string;
@@ -16,6 +17,13 @@ type DbConn = {
 export function TestInputClient() {
   const apiBase = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api", []);
   const [psrNumber, setPsrNumber] = useState("");
+  const [requestTitle, setRequestTitle] = useState("");
+  const [requesterEmpNo, setRequesterEmpNo] = useState("");
+  const [requesterName, setRequesterName] = useState("");
+  const [requesterDept, setRequesterDept] = useState("");
+  const [developerEmpNo, setDeveloperEmpNo] = useState("");
+  const [developerName, setDeveloperName] = useState("");
+  const [developerDept, setDeveloperDept] = useState("");
   const [dbConnId, setDbConnId] = useState("");
   const [sqlText, setSqlText] = useState("SELECT 1 FROM DUAL");
   const [viewableDate, setViewableDate] = useState("");
@@ -49,9 +57,24 @@ export function TestInputClient() {
     return `${yyyy}-${mm}-${dd}`;
   }, []);
 
+  const defaultEnd = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    return { date: `${yyyy}-${mm}-${dd}`, hour: hh };
+  }, []);
+
+  useEffect(() => {
+    setViewableDate(defaultEnd.date);
+    setViewableHour(defaultEnd.hour);
+  }, [defaultEnd.date, defaultEnd.hour]);
+
   useEffect(() => {
     const load = async () => {
-      const resp = await fetch(`${apiBase}/v1/db-connections`, { headers: { "X-User-Role": "DBA" } });
+      const resp = await fetch(`${apiBase}/v1/db-connections`, { headers: apiHeaders() });
       if (!resp.ok) throw new Error(await resp.text());
       const rows = ((await resp.json()) as DbConn[]).filter((x) => x.use_yn === "Y");
       setConnections(rows);
@@ -67,9 +90,16 @@ export function TestInputClient() {
     try {
       const resp = await fetch(`${apiBase}/v1/test-input/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders(),
         body: JSON.stringify({
           psr_number: psrNumber,
+          request_title: requestTitle || null,
+          requester_emp_no: requesterEmpNo || null,
+          requester_name: requesterName || null,
+          requester_dept: requesterDept || null,
+          developer_emp_no: developerEmpNo || null,
+          developer_name: developerName || null,
+          developer_dept: developerDept || null,
           db_conn_id: dbConnId,
           sql_text: sqlText,
           viewable_until: buildViewableIso(viewableDate, viewableHour),
@@ -88,9 +118,16 @@ export function TestInputClient() {
       const data = (await resp.json()) as { job_id: string };
       setMessage(`송신 완료: ${data.job_id} (DBA 승인함으로 전달됨)`);
       setPsrNumber("");
+      setRequestTitle("");
+      setRequesterEmpNo("");
+      setRequesterName("");
+      setRequesterDept("");
+      setDeveloperEmpNo("");
+      setDeveloperName("");
+      setDeveloperDept("");
       setSqlText("SELECT 1 FROM DUAL");
-      setViewableDate("");
-      setViewableHour("00");
+      setViewableDate(defaultEnd.date);
+      setViewableHour(defaultEnd.hour);
     } catch (e) {
       setError(e instanceof Error ? e.message : "송신 실패");
     } finally {
@@ -121,6 +158,15 @@ export function TestInputClient() {
             />
           </div>
           <div>
+            <label className="mb-1 block text-xs text-slate-600">요청 제목</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={requestTitle}
+              onChange={(e) => setRequestTitle(e.target.value)}
+              placeholder="예: 2026년 1분기 인사현황 조회"
+            />
+          </div>
+          <div>
             <label className="mb-1 block text-xs text-slate-600">커넥션 선택</label>
             <select
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
@@ -134,6 +180,54 @@ export function TestInputClient() {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">작성자 사번</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={requesterEmpNo}
+              onChange={(e) => setRequesterEmpNo(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">작성자 이름</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={requesterName}
+              onChange={(e) => setRequesterName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">작성자 부서</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={requesterDept}
+              onChange={(e) => setRequesterDept(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">개발자 사번</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={developerEmpNo}
+              onChange={(e) => setDeveloperEmpNo(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">개발자 이름</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={developerName}
+              onChange={(e) => setDeveloperName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">개발자 부서</label>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={developerDept}
+              onChange={(e) => setDeveloperDept(e.target.value)}
+            />
           </div>
         </div>
         <div className="mt-3">

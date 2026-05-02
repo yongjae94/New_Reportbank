@@ -14,6 +14,10 @@ from src.modules.security.infrastructure.security_repository import SecurityRepo
 router = APIRouter(prefix="/v1/runtime", tags=["runtime-security"])
 
 
+def _casbin_subject(user: CurrentUser) -> str:
+    return user.login_id or user.user_id
+
+
 @router.post("/psr/{psr_id}/execute", response_model=RuntimeQueryExecuteResponse)
 async def execute_psr_realtime_query(
     psr_id: str,
@@ -22,7 +26,7 @@ async def execute_psr_realtime_query(
     session: AsyncSession = Depends(get_repo_session),
     user: CurrentUser = Depends(get_current_user),
 ) -> RuntimeQueryExecuteResponse:
-    allow_unmask = bool(body.unmask and enforce_team_approve(user.user_id, user.team_id))
+    allow_unmask = bool(body.unmask and enforce_team_approve(_casbin_subject(user), user.team_id))
     if body.unmask and not allow_unmask:
         raise HTTPException(status_code=403, detail="unmask_permission_required")
 
@@ -57,7 +61,7 @@ async def execute_team_report(
     session: AsyncSession = Depends(get_repo_session),
     user: CurrentUser = Depends(get_current_user),
 ) -> RuntimeQueryExecuteResponse:
-    allow_unmask = bool(body.unmask and enforce_team_approve(user.user_id, user.team_id))
+    allow_unmask = bool(body.unmask and enforce_team_approve(_casbin_subject(user), user.team_id))
     if body.unmask and not allow_unmask:
         raise HTTPException(status_code=403, detail="unmask_permission_required")
 

@@ -1,10 +1,13 @@
 "use client";
 
-import { Bell, Moon, Sun } from "lucide-react";
+import { Bell, LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/components/auth/auth-context";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { Button } from "@/components/ui/button";
 
 export function Header() {
+  const { profile, logout } = useAuth();
   const [dark, setDark] = useState(false);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -27,8 +30,15 @@ export function Header() {
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
           <div className="rounded-md bg-slate-100 px-3 py-1.5 text-sm">
-            접속자 <span className="font-semibold text-indigo-700">admin</span>
+            접속자{" "}
+            <span className="font-semibold text-indigo-700">
+              {profile?.displayName || profile?.loginId || "—"}
+            </span>
           </div>
+          <Button type="button" variant="outline" size="sm" onClick={logout} className="gap-1">
+            <LogOut className="h-3.5 w-3.5" />
+            로그아웃
+          </Button>
         </div>
       </div>
     </header>

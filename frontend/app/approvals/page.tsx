@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 import { REPORT_TEMPLATES } from "@/lib/report-templates";
 import {
   getReportAccessMap,
@@ -19,6 +20,13 @@ import { ReportApprovalList } from "@/components/approvals/report-approval-list"
 type PsrFlow = {
   job_id: string;
   psr_number: string;
+  request_title?: string | null;
+  requester_emp_no?: string | null;
+  requester_name?: string | null;
+  requester_dept?: string | null;
+  developer_emp_no?: string | null;
+  developer_name?: string | null;
+  developer_dept?: string | null;
   status: string;
   sql_text: string;
   final_sql_text?: string | null;
@@ -29,6 +37,16 @@ type PsrFlow = {
   requested_at?: string | null;
   viewable_until?: string | null;
   access_mode: string;
+  dba_reviewer?: string | null;
+  infosec_reviewer?: string | null;
+  mask_rules?: Array<{ column_name: string; policy_id: string; policy_name?: string; transform_key?: string }>;
+};
+
+type MaskPolicy = {
+  policy_id: string;
+  policy_name: string;
+  transform_key: string;
+  use_yn: string;
 };
 
 export default function ApprovalsPage() {
@@ -46,9 +64,12 @@ export default function ApprovalsPage() {
   const [viewableInitJobId, setViewableInitJobId] = useState<string | null>(null);
   const [returnChoiceJobId, setReturnChoiceJobId] = useState<string | null>(null);
   const [returning, setReturning] = useState(false);
+  const [maskPolicies, setMaskPolicies] = useState<MaskPolicy[]>([]);
+  const [columnPolicyMap, setColumnPolicyMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void reloadPsrLists();
+    void loadMaskPolicies();
   }, []);
 
   useEffect(() => {
@@ -91,6 +112,11 @@ export default function ApprovalsPage() {
     }
 
     setViewableInitJobId(selected.job_id);
+    const nextMap: Record<string, string> = {};
+    for (const rule of selected.mask_rules ?? []) {
+      if (rule.column_name && rule.policy_id) nextMap[rule.column_name] = rule.policy_id;
+    }
+    setColumnPolicyMap(nextMap);
   }, [selected?.job_id, viewableInitJobId]);
   const reportStateMap = useMemo(
     () =>
@@ -115,7 +141,10 @@ export default function ApprovalsPage() {
 
   const approve = async (jobId: string) => {
     setPageNotice("");
-    const resp = await fetch(`${apiBase}/v1/psr/${jobId}/infosec-approve`, { method: "POST" });
+    const resp = await fetch(`${apiBase}/v1/psr/${jobId}/infosec-approve`, {
+      method: "POST",
+      headers: apiHeaders(),
+    });
     if (!resp.ok) {
       setPageNotice(await resp.text());
       return;
@@ -131,7 +160,7 @@ export default function ApprovalsPage() {
     try {
       const resp = await fetch(`${apiBase}/v1/psr/${jobId}/infosec-return`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders(),
         body: JSON.stringify({
           return_target: target,
           reason: target === "dba" ? "정보보호 담당자 반송" : "작성자 반송(ITSM 반영용 삭제)",
@@ -156,7 +185,7 @@ export default function ApprovalsPage() {
     const nextMode = row.access_mode === "승인" ? "잠금" : "승인";
     const resp = await fetch(`${apiBase}/v1/psr/${row.job_id}/access-mode`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ access_mode: nextMode }),
     });
     if (!resp.ok) {
@@ -177,7 +206,7 @@ export default function ApprovalsPage() {
     setPageNotice("");
     const resp = await fetch(`${apiBase}/v1/psr/${selected.job_id}/viewable-until`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({
         viewable_until: buildViewableIso(viewableDateEdit, viewableHourEdit),
       }),
@@ -191,6 +220,27 @@ export default function ApprovalsPage() {
       setPageNotice(txt);
       return;
     }
+    await reloadPsrLists();
+    setSelectedPsrId(selected.job_id);
+    setViewableInitJobId(null);
+  };
+
+  const saveMaskRules = async () => {
+    if (!selected) return;
+    setPageNotice("");
+    const items = Object.entries(columnPolicyMap)
+      .filter(([, policyId]) => policyId)
+      .map(([columnName, policyId]) => ({ column_name: columnName, policy_id: policyId }));
+    const resp = await fetch(`${apiBase}/v1/psr/${selected.job_id}/mask-rules`, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ items }),
+    });
+    if (!resp.ok) {
+      setPageNotice(await resp.text());
+      return;
+    }
+    setPageNotice("마스킹 컬럼 정책이 저장되었습니다.");
     await reloadPsrLists();
     setSelectedPsrId(selected.job_id);
     setViewableInitJobId(null);
@@ -246,9 +296,13 @@ export default function ApprovalsPage() {
                   <div>
                     <p className="text-sm font-medium">{row.psr_number}</p>
                     <p className="text-xs text-slate-500">
+                      제목: {row.request_title ?? "-"} / 작성자: {row.requester_name ?? "-"}({row.requester_emp_no ?? "-"}) /{" "}
+                      개발자: {row.developer_name ?? "-"}({row.developer_emp_no ?? "-"})
+                    </p>
+                    <p className="text-xs text-slate-500">
                       시작일: {row.requested_at ? row.requested_at.replace("T", " ").slice(0, 19) : "-"} / 종료일:{" "}
                       {row.viewable_until ? row.viewable_until.replace("T", " ").slice(0, 19) : "-"} / DB:{" "}
-                      {row.target_db_kind}
+                      {row.target_db_kind} / DBA: {row.dba_reviewer ?? "-"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -332,9 +386,14 @@ export default function ApprovalsPage() {
                 <div>
                   <p className="text-sm font-medium">{row.psr_number}</p>
                   <p className="text-xs text-slate-500">
+                    제목: {row.request_title ?? "-"} / 작성자: {row.requester_name ?? "-"}({row.requester_emp_no ?? "-"}) /{" "}
+                    개발자: {row.developer_name ?? "-"}({row.developer_emp_no ?? "-"})
+                  </p>
+                  <p className="text-xs text-slate-500">
                     상태: 산출 완료 / 스냅샷: {row.snapshot_rows.length}건 / 시작일:{" "}
                     {row.requested_at ? row.requested_at.replace("T", " ").slice(0, 19) : "-"} / 종료일:{" "}
-                    {row.viewable_until ? row.viewable_until.replace("T", " ").slice(0, 19) : "-"}
+                    {row.viewable_until ? row.viewable_until.replace("T", " ").slice(0, 19) : "-"} / DBA:{" "}
+                    {row.dba_reviewer ?? "-"} / 정보보호: {row.infosec_reviewer ?? "-"}
                   </p>
                 </div>
                 <button
@@ -371,6 +430,17 @@ export default function ApprovalsPage() {
         {category === "psr" && selected ? (
           <div className="space-y-3">
             <p className="text-sm font-medium">{selected.psr_number}</p>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p>요청제목: {selected.request_title ?? "-"}</p>
+              <p>
+                작성자: {selected.requester_name ?? "-"} ({selected.requester_emp_no ?? "-"}) /{" "}
+                {selected.requester_dept ?? "-"}
+              </p>
+              <p>
+                개발자: {selected.developer_name ?? "-"} ({selected.developer_emp_no ?? "-"}) /{" "}
+                {selected.developer_dept ?? "-"}
+              </p>
+            </div>
             <div>
               <p className="mb-2 text-xs font-medium text-slate-500">컬럼 리스트</p>
               <div className="flex flex-wrap gap-2">
@@ -379,6 +449,33 @@ export default function ApprovalsPage() {
                     {col}
                   </span>
                 ))}
+              </div>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="mb-2 text-xs font-medium text-slate-500">컬럼별 마스킹 정책 지정</p>
+              <div className="space-y-2">
+                {(selected.snapshot_columns?.length ? selected.snapshot_columns : []).map((col) => (
+                  <div key={col} className="flex items-center gap-2">
+                    <span className="min-w-[180px] text-xs text-slate-700">{col}</span>
+                    <select
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+                      value={columnPolicyMap[col] ?? ""}
+                      onChange={(e) => setColumnPolicyMap((prev) => ({ ...prev, [col]: e.target.value }))}
+                    >
+                      <option value="">미지정</option>
+                      {maskPolicies.map((p) => (
+                        <option key={p.policy_id} value={p.policy_id}>
+                          {p.policy_name} ({p.transform_key})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => void saveMaskRules()}>
+                  마스킹 정책 저장
+                </Button>
               </div>
             </div>
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -477,8 +574,8 @@ export default function ApprovalsPage() {
   async function reloadPsrLists() {
     try {
       const [pendingResp, managedResp] = await Promise.all([
-        fetch(`${apiBase}/v1/psr/infosec-pending`),
-        fetch(`${apiBase}/v1/psr/managed`),
+        fetch(`${apiBase}/v1/psr/infosec-pending`, { headers: apiHeaders() }),
+        fetch(`${apiBase}/v1/psr/managed`, { headers: apiHeaders() }),
       ]);
       if (!pendingResp.ok) throw new Error(await pendingResp.text());
       if (!managedResp.ok) throw new Error(await managedResp.text());
@@ -486,6 +583,16 @@ export default function ApprovalsPage() {
       setManagedRows((await managedResp.json()) as PsrFlow[]);
     } catch (e) {
       setPageNotice(e instanceof Error ? e.message : "조회 실패");
+    }
+  }
+
+  async function loadMaskPolicies() {
+    try {
+      const resp = await fetch(`${apiBase}/v1/security/mask-policies`, { headers: apiHeaders() });
+      if (!resp.ok) throw new Error(await resp.text());
+      setMaskPolicies(((await resp.json()) as MaskPolicy[]).filter((x) => x.use_yn === "Y"));
+    } catch (e) {
+      setPageNotice(e instanceof Error ? e.message : "마스킹 정책 조회 실패");
     }
   }
 }

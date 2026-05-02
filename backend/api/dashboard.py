@@ -19,12 +19,16 @@ from src.modules.dashboard.domain.risk_policy import summarize_risk
 router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
 
 
+def _casbin_subject(user: CurrentUser) -> str:
+    return user.login_id or user.user_id
+
+
 @router.get("/stats", response_model=DashboardStatsDto)
 async def get_dashboard_stats(
     session: AsyncSession = Depends(get_repo_session),
     user: CurrentUser = Depends(get_current_user),
 ) -> DashboardStatsDto:
-    if not enforce_team_read(user.user_id, user.team_id):
+    if not enforce_team_read(_casbin_subject(user), user.team_id):
         raise HTTPException(status_code=403, detail="team_access_forbidden")
     service = DashboardService()
     stats = await service.get_team_stats(session, user.team_id)
@@ -36,7 +40,7 @@ async def list_dashboard_queries(
     session: AsyncSession = Depends(get_repo_session),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[DashboardQueryDto]:
-    if not enforce_team_read(user.user_id, user.team_id):
+    if not enforce_team_read(_casbin_subject(user), user.team_id):
         raise HTTPException(status_code=403, detail="team_access_forbidden")
     service = DashboardService()
     queries = await service.list_team_queries(session, user.team_id)
@@ -60,7 +64,7 @@ async def get_meta_dictionary(
     keyword: str | None = Query(default=None),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[MetadataDictionaryRowDto]:
-    if not enforce_team_read(user.user_id, user.team_id):
+    if not enforce_team_read(_casbin_subject(user), user.team_id):
         raise HTTPException(status_code=403, detail="team_access_forbidden")
     service = DashboardService()
     rows = service.list_team_dictionary(team_id=user.team_id, keyword=keyword)
@@ -73,13 +77,13 @@ async def decide_approval(
     body: ApprovalDecisionPayload,
     user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
-    if not enforce_team_approve(user.user_id, user.team_id):
+    if not enforce_team_approve(_casbin_subject(user), user.team_id):
         raise HTTPException(status_code=403, detail="approval_permission_required")
     return {
         "query_id": query_id,
         "approved": body.approved,
         "comment": body.comment,
-        "reviewed_by": user.user_id,
+        "reviewed_by": user.login_id or user.user_id,
         "mock_data_guard": True,
         "sample_preview": [
             {"column": "NAME", "value": "홍*동"},

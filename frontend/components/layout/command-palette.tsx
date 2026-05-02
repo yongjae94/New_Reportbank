@@ -1,15 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/components/auth/auth-context";
+import { canShowAdminPageKey } from "@/lib/menu-access";
 
-const quickLinks = [
+const quickLinksBase = [
   { href: "/dashboard", label: "대시보드 홈" },
   { href: "/outputs", label: "PSR 산출" },
   { href: "/approvals", label: "승인 관리함" },
+  { href: "/infosec/masking-policy", label: "마스킹 정책" },
+  { href: "/security", label: "보안 설정" },
 ];
 
 export function CommandPalette() {
+  const { profile } = useAuth();
+  const quickLinks = useMemo(() => {
+    const adminPool = [
+      { pageKey: "admin_users" as const, href: "/admin/users", label: "사용자 (관리자)" },
+      { pageKey: "admin_departments" as const, href: "/admin/departments", label: "부서 관리" },
+      { pageKey: "admin_permissions" as const, href: "/admin/permissions", label: "권한 관리" },
+    ];
+    const admin = adminPool
+      .filter((x) => canShowAdminPageKey(profile, x.pageKey))
+      .map(({ pageKey: _p, ...rest }) => rest);
+    return [...quickLinksBase, ...admin];
+  }, [profile]);
+
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

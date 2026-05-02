@@ -3,15 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 
 type Job = {
   id: string;
   psr_number: string;
+  request_title?: string | null;
+  requester_emp_no?: string | null;
+  requester_name?: string | null;
+  requester_dept?: string | null;
+  developer_emp_no?: string | null;
+  developer_name?: string | null;
+  developer_dept?: string | null;
   status: string;
   sql_text: string;
   target_db_kind: string;
   executed_db_conn_id?: string | null;
   viewable_until?: string | null;
+  dba_reviewer?: string | null;
+  infosec_reviewer?: string | null;
 };
 
 type DbConn = {
@@ -30,12 +40,15 @@ type DbConn = {
 export function DbaApprovalClient() {
   const apiBase = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api", []);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [historyJobs, setHistoryJobs] = useState<Job[]>([]);
   const [connections, setConnections] = useState<DbConn[]>([]);
+  const [tab, setTab] = useState<"pending" | "history">("pending");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedConnId, setSelectedConnId] = useState<string>("");
   const [editedSql, setEditedSql] = useState("");
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewableDate, setViewableDate] = useState("");
   const [viewableHour, setViewableHour] = useState("00");
@@ -70,8 +83,8 @@ export function DbaApprovalClient() {
     setError(null);
     try {
       const [jobsResp, connResp] = await Promise.all([
-        fetch(`${apiBase}/workflow/jobs/pending-dba`, { headers: { "X-User-Role": "DBA" } }),
-        fetch(`${apiBase}/v1/db-connections`, { headers: { "X-User-Role": "DBA" } }),
+        fetch(`${apiBase}/workflow/jobs/pending-dba`, { headers: apiHeaders() }),
+        fetch(`${apiBase}/v1/db-connections`, { headers: apiHeaders() }),
       ]);
       if (!jobsResp.ok) throw new Error(await jobsResp.text());
       if (!connResp.ok) throw new Error(await connResp.text());
@@ -79,6 +92,9 @@ export function DbaApprovalClient() {
       const connData = (await connResp.json()) as DbConn[];
       setJobs(jobsData.filter((x) => x.status === "awaiting_dba"));
       setConnections(connData.filter((x) => x.use_yn === "Y"));
+      const historyResp = await fetch(`${apiBase}/workflow/jobs/dba-history`, { headers: apiHeaders() });
+      if (!historyResp.ok) throw new Error(await historyResp.text());
+      setHistoryJobs((await historyResp.json()) as Job[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "조회 실패");
     } finally {
@@ -118,7 +134,7 @@ export function DbaApprovalClient() {
     try {
       const resp = await fetch(`${apiBase}/workflow/jobs/${selectedJob.id}/execute`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-User-Role": "DBA" },
+        headers: apiHeaders(),
         body: JSON.stringify({
           dba_user: "dba.user",
           db_conn_id: selectedConnId,
@@ -148,24 +164,79 @@ export function DbaApprovalClient() {
     }
   };
 
+  const returnToAuthor = async () => {
+    if (!selectedJob) return;
+    setReturning(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${apiBase}/workflow/jobs/${selectedJob.id}/return`, {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          dba_user: "dba.user",
+          reason: "DBA 반송(작성자 되돌림/삭제)",
+        }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      await load();
+      setSelectedJobId(null);
+      setEditedSql("");
+      setViewableDate("");
+      setViewableHour("00");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "반송 실패");
+    } finally {
+      setReturning(false);
+    }
+  };
+
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">DBA 승인함</h1>
-          <p className="text-sm text-slate-600">실행 대기 PSR을 검토하고 쿼리를 수정 후 실행합니다.</p>
+          <p className="text-sm text-slate-600">실행 대기 PSR을 검토/실행하고 승인 이력을 조회합니다.</p>
         </div>
-        <Button
-          onClick={() => void execute()}
-          disabled={!selectedJob || !selectedConnId || executing || !isValidEndDate(viewableDate, viewableHour)}
+        {tab === "pending" ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void returnToAuthor()}
+              disabled={!selectedJob || returning}
+            >
+              {returning ? <Loader2 className="h-4 w-4 animate-spin" /> : "반송(삭제)"}
+            </Button>
+            <Button
+              onClick={() => void execute()}
+              disabled={!selectedJob || !selectedConnId || executing || !isValidEndDate(viewableDate, viewableHour)}
+            >
+              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : "실행"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("pending")}
+          className={`rounded-full px-3 py-1 text-sm ${tab === "pending" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-700"}`}
         >
-          {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : "실행"}
-        </Button>
+          실행 대기
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("history")}
+          className={`rounded-full px-3 py-1 text-sm ${tab === "history" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-700"}`}
+        >
+          승인 이력
+        </button>
       </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {loading ? <p className="text-sm text-slate-500">불러오는 중...</p> : null}
 
+      {tab === "pending" ? (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
         <div className="rounded-xl border border-slate-200 bg-white p-3">
           <h3 className="mb-2 font-medium">실행 대기 PSR</h3>
@@ -180,7 +251,12 @@ export function DbaApprovalClient() {
                 }`}
               >
                 <p className="text-sm font-medium">{job.psr_number}</p>
-                <p className="text-xs text-slate-500">상태: {job.status}</p>
+                <p className="text-xs text-slate-500">
+                  제목: {job.request_title ?? "-"} / 작성자: {job.requester_name ?? "-"}({job.requester_emp_no ?? "-"})
+                </p>
+                <p className="text-xs text-slate-500">
+                  작성부서: {job.requester_dept ?? "-"} / 개발자: {job.developer_name ?? "-"}({job.developer_emp_no ?? "-"})
+                </p>
               </button>
             ))}
             {!jobs.length ? <p className="text-sm text-slate-500">실행 대기 항목이 없습니다.</p> : null}
@@ -189,6 +265,19 @@ export function DbaApprovalClient() {
 
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="font-medium">상세 검토/편집</h3>
+          {selectedJob ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p>요청제목: {selectedJob.request_title ?? "-"}</p>
+              <p>
+                작성자: {selectedJob.requester_name ?? "-"} ({selectedJob.requester_emp_no ?? "-"}) /{" "}
+                {selectedJob.requester_dept ?? "-"}
+              </p>
+              <p>
+                개발자: {selectedJob.developer_name ?? "-"} ({selectedJob.developer_emp_no ?? "-"}) /{" "}
+                {selectedJob.developer_dept ?? "-"}
+              </p>
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">타겟 DB 선택</label>
             <select
@@ -252,6 +341,25 @@ export function DbaApprovalClient() {
           </div>
         </div>
       </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="mb-3 font-medium">DBA 승인 이력</h3>
+          <div className="space-y-2">
+            {historyJobs.map((job) => (
+              <div key={job.id} className="rounded-md border border-slate-200 p-3">
+                <p className="text-sm font-medium">{job.psr_number}</p>
+                <p className="text-xs text-slate-600">
+                  제목: {job.request_title ?? "-"} / 작성자: {job.requester_name ?? "-"}({job.requester_emp_no ?? "-"})
+                </p>
+                <p className="text-xs text-slate-600">
+                  상태: {job.status} / DBA 승인자: {job.dba_reviewer ?? "-"} / 정보보호 승인자: {job.infosec_reviewer ?? "-"}
+                </p>
+              </div>
+            ))}
+            {!historyJobs.length ? <p className="text-sm text-slate-500">승인 이력이 없습니다.</p> : null}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

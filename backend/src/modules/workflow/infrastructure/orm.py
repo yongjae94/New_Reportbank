@@ -30,6 +30,13 @@ class WorkflowJobRow(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     psr_number: Mapped[str] = mapped_column(String(128), index=True)
+    request_title: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    requester_emp_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    requester_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    requester_dept: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    developer_emp_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    developer_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    developer_dept: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     sql_text: Mapped[str] = mapped_column(Text())
     target_db_kind: Mapped[str] = mapped_column(String(32))

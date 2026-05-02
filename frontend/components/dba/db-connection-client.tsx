@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { apiHeaders } from "@/lib/api-headers";
 
 type Conn = {
   db_conn_id: string;
@@ -57,7 +58,7 @@ export function DbConnectionClient() {
 
   const load = async () => {
     setError("");
-    const resp = await fetch(`${apiBase}/v1/db-connections`, { headers: { "X-User-Role": "DBA" } });
+    const resp = await fetch(`${apiBase}/v1/db-connections`, { headers: apiHeaders() });
     if (!resp.ok) throw new Error(await resp.text());
     setRows((await resp.json()) as Conn[]);
   };
@@ -76,7 +77,7 @@ export function DbConnectionClient() {
     const url = `${apiBase}/v1/db-connections`;
     const resp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Role": "DBA" },
+      headers: apiHeaders(),
       body: JSON.stringify(form),
     });
     if (!resp.ok) throw new Error(await resp.text());
@@ -91,7 +92,7 @@ export function DbConnectionClient() {
     setMessage("");
     const resp = await fetch(`${apiBase}/v1/db-connections/${id}`, {
       method: "DELETE",
-      headers: { "X-User-Role": "DBA" },
+      headers: apiHeaders(),
     });
     if (!resp.ok) throw new Error(await resp.text());
     setMessage("삭제 완료");
@@ -107,7 +108,7 @@ export function DbConnectionClient() {
     setMessage("");
     const resp = await fetch(`${apiBase}/v1/db-connections/${row.db_conn_id}/test`, {
       method: "POST",
-      headers: { "X-User-Role": "DBA" },
+      headers: apiHeaders(),
     });
     if (!resp.ok) throw new Error(await resp.text());
     setMessage("연결 테스트 성공");

@@ -3,6 +3,14 @@ from pydantic import BaseModel, Field
 
 class ItsmWebhookPayload(BaseModel):
     psr_number: str = Field(..., min_length=1)
+    request_title: str | None = None
+    requester_emp_no: str | None = None
+    requester_name: str | None = None
+    requester_dept: str | None = None
+    developer_emp_no: str | None = None
+    developer_name: str | None = None
+    developer_dept: str | None = None
+    viewable_until: str | None = None
     sql_text: str = Field(..., min_length=1)
     target_db_kind: str = Field(default="oracle", description="oracle | mssql | postgres")
 
@@ -16,6 +24,11 @@ class DbaRejectPayload(BaseModel):
     reason: str = Field(..., min_length=1)
 
 
+class DbaReturnPayload(BaseModel):
+    dba_user: str = Field(..., min_length=1)
+    reason: str | None = None
+
+
 class JobCreatedResponse(BaseModel):
     job_id: str
 
@@ -23,6 +36,13 @@ class JobCreatedResponse(BaseModel):
 class WorkflowJobDto(BaseModel):
     id: str
     psr_number: str
+    request_title: str | None = None
+    requester_emp_no: str | None = None
+    requester_name: str | None = None
+    requester_dept: str | None = None
+    developer_emp_no: str | None = None
+    developer_name: str | None = None
+    developer_dept: str | None = None
     status: str
     sql_text: str
     target_db_kind: str
@@ -31,6 +51,8 @@ class WorkflowJobDto(BaseModel):
     viewable_until: str | None = None
     pii_summary: dict
     performance_notes: str | None
+    dba_reviewer: str | None = None
+    infosec_reviewer: str | None = None
 
 
 class DashboardStatsDto(BaseModel):
@@ -127,6 +149,13 @@ class DbaExecutePayload(BaseModel):
 
 class TestInputSubmitPayload(BaseModel):
     psr_number: str = Field(..., min_length=1)
+    request_title: str | None = None
+    requester_emp_no: str | None = None
+    requester_name: str | None = None
+    requester_dept: str | None = None
+    developer_emp_no: str | None = None
+    developer_name: str | None = None
+    developer_dept: str | None = None
     db_conn_id: str = Field(..., min_length=1)
     sql_text: str = Field(..., min_length=1)
     viewable_until: str | None = None
@@ -135,6 +164,13 @@ class TestInputSubmitPayload(BaseModel):
 class PsrFlowDto(BaseModel):
     job_id: str
     psr_number: str
+    request_title: str | None = None
+    requester_emp_no: str | None = None
+    requester_name: str | None = None
+    requester_dept: str | None = None
+    developer_emp_no: str | None = None
+    developer_name: str | None = None
+    developer_dept: str | None = None
     status: str
     sql_text: str
     final_sql_text: str | None = None
@@ -145,6 +181,9 @@ class PsrFlowDto(BaseModel):
     requested_at: str | None = None
     viewable_until: str | None = None
     access_mode: str = "잠금"
+    dba_reviewer: str | None = None
+    infosec_reviewer: str | None = None
+    mask_rules: list[dict] = Field(default_factory=list)
 
 
 class PsrRealtimeResponse(BaseModel):
@@ -169,3 +208,25 @@ class PsrInfosecReturnResponse(BaseModel):
     result: str
     job_id: str
     next_status: str | None = None
+
+
+class MaskPolicyDto(BaseModel):
+    policy_id: str
+    policy_name: str
+    transform_key: str
+    use_yn: str = "Y"
+
+
+class MaskPolicyUpsertPayload(BaseModel):
+    policy_name: str = Field(..., min_length=1)
+    transform_key: str = Field(..., pattern="^(RRN|PHONE|NAME|NAME_KO|NAME_EN|ADDRESS)$")
+    use_yn: str = Field(default="Y", pattern="^(Y|N)$")
+
+
+class PsrMaskRuleItemPayload(BaseModel):
+    column_name: str = Field(..., min_length=1)
+    policy_id: str = Field(..., min_length=1)
+
+
+class PsrMaskRuleUpsertPayload(BaseModel):
+    items: list[PsrMaskRuleItemPayload] = Field(default_factory=list)

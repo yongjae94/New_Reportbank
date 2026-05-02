@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from datetime import datetime
+
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,8 +39,22 @@ async def receive_itsm_webhook(
     job = await wf.create_from_itsm(
         session,
         psr_number=body.psr_number,
+        request_title=body.request_title,
+        requester_emp_no=body.requester_emp_no,
+        requester_name=body.requester_name,
+        requester_dept=body.requester_dept,
+        developer_emp_no=body.developer_emp_no,
+        developer_name=body.developer_name,
+        developer_dept=body.developer_dept,
+        viewable_until=_parse_iso_dt(body.viewable_until),
         sql_text=body.sql_text,
         target_db_kind=body.target_db_kind,
     )
     background_tasks.add_task(_run_pii_background, job.id)
     return JobCreatedResponse(job_id=job.id)
+
+
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))

@@ -3,41 +3,27 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Building2,
   Database,
   FileText,
   Home,
   FlaskConical,
+  KeyRound,
   PlayCircle,
   ShieldCheck,
   ShieldCog,
   Table2,
+  Users,
   type LucideIcon,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
+import { useAuth } from "@/components/auth/auth-context";
+import { canShowAdminPageKey, canShowDbaPageKey } from "@/lib/menu-access";
 import { cn } from "@/lib/utils";
-import { CURRENT_USER } from "@/lib/report-templates";
 
 type Item = { href: string; label: string; icon: LucideIcon };
-
-const baseSections: Array<{ title: string; items: Item[] }> = [
-  {
-    title: "공통",
-    items: [
-      { href: "/dashboard", label: "대시보드 홈", icon: Home },
-      { href: "/outputs", label: "PSR 산출", icon: FileText },
-      { href: "/reports", label: "팀별 레포트", icon: Table2 },
-    ],
-  },
-  {
-    title: "정보보호담당자",
-    items: [{ href: "/approvals", label: "승인 관리함", icon: ShieldCheck }],
-  },
-  {
-    title: "관리자",
-    items: [{ href: "/security", label: "보안 설정", icon: ShieldCog }],
-  },
-];
+type NavItem = Item & { pageKey: string };
 
 export function Sidebar({
   collapsed,
@@ -47,23 +33,59 @@ export function Sidebar({
   onToggle: () => void;
 }) {
   const pathname = usePathname();
-  const sections =
-    CURRENT_USER.role === "DBA"
-      ? [
-          ...baseSections,
-          {
-            title: "DBA 전용",
-            items: [
-              { href: "/dba/approvals", label: "DBA 승인함", icon: PlayCircle },
-              { href: "/dba/db-connections", label: "DB Connection 관리", icon: Database },
-            ],
-          },
-          {
-            title: "테스트",
-            items: [{ href: "/dba/test-input", label: "테스트 입력 페이지", icon: FlaskConical }],
-          },
-        ]
-      : baseSections;
+  const { profile } = useAuth();
+
+  const adminNavPool: NavItem[] = [
+    { pageKey: "admin_security_settings", href: "/security", label: "보안 설정", icon: ShieldCog },
+    { pageKey: "admin_users", href: "/admin/users", label: "사용자", icon: Users },
+    { pageKey: "admin_departments", href: "/admin/departments", label: "부서 관리", icon: Building2 },
+    { pageKey: "admin_permissions", href: "/admin/permissions", label: "권한 관리", icon: KeyRound },
+  ];
+  const adminItems: Item[] = adminNavPool
+    .filter((row) => canShowAdminPageKey(profile, row.pageKey))
+    .map(({ pageKey: _pk, ...rest }) => rest);
+
+  const baseSections: Array<{ title: string; items: Item[] }> = [
+    {
+      title: "공통",
+      items: [
+        { href: "/dashboard", label: "대시보드 홈", icon: Home },
+        { href: "/outputs", label: "PSR 산출", icon: FileText },
+        { href: "/reports", label: "팀별 레포트", icon: Table2 },
+      ],
+    },
+    {
+      title: "정보보호담당자",
+      items: [
+        { href: "/approvals", label: "승인 관리함", icon: ShieldCheck },
+        { href: "/infosec/masking-policy", label: "마스킹 정책", icon: ShieldCog },
+      ],
+    },
+    ...(adminItems.length ? [{ title: "관리자", items: adminItems }] : []),
+  ];
+
+  const dbaExclusivePool: NavItem[] = [
+    { pageKey: "dba_approvals", href: "/dba/approvals", label: "DBA 승인함", icon: PlayCircle },
+    { pageKey: "dba_db_connections", href: "/dba/db-connections", label: "DB Connection 관리", icon: Database },
+  ];
+  const dbaTestPool: NavItem[] = [
+    { pageKey: "dba_test_input", href: "/dba/test-input", label: "테스트 입력 페이지", icon: FlaskConical },
+  ];
+  const dbaExclusiveItems: Item[] = dbaExclusivePool
+    .filter((row) => canShowDbaPageKey(profile, row.pageKey))
+    .map(({ pageKey: _pk, ...rest }) => rest);
+  const dbaTestItems: Item[] = dbaTestPool
+    .filter((row) => canShowDbaPageKey(profile, row.pageKey))
+    .map(({ pageKey: _pk, ...rest }) => rest);
+
+  const sections: Array<{ title: string; items: Item[] }> = [...baseSections];
+  if (dbaExclusiveItems.length) {
+    sections.push({ title: "DBA 전용", items: dbaExclusiveItems });
+  }
+  if (dbaTestItems.length) {
+    sections.push({ title: "테스트", items: dbaTestItems });
+  }
+
   return (
     <aside
       className={cn(
